@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def is_test_environment() -> bool:
     """Check if the current process is executing within a test suite."""
-    if os.environ.get("HEBRAS_DISABLE_FILE_LOGGING") == "1":
+    if os.environ.get("AGY_DISABLE_FILE_LOGGING") == "1":
         return True
     if os.environ.get("PYTEST_CURRENT_TEST") is not None:
         return True

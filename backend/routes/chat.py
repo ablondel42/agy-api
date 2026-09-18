@@ -105,10 +105,10 @@ def _extract_agent_from_request(request: ChatCompletionRequest) -> str:
     model = request.model
     if model:
         raw_name = model.strip()
-        if raw_name.startswith("hebras-interactive-"):
-            return raw_name[len("hebras-interactive-"):]
-        elif raw_name.startswith("hebras-"):
-            return raw_name[len("hebras-"):]
+        if raw_name.startswith("agy-interactive-"):
+            return raw_name[len("agy-interactive-"):]
+        elif raw_name.startswith("agy-"):
+            return raw_name[len("agy-"):]
         elif raw_name.startswith("interactive-"):
             return raw_name[len("interactive-"):]
         elif raw_name in ("custom-agent", "coder", "code_reviewer"):
@@ -183,7 +183,7 @@ async def chat_completions(
     is_interactive = (
         request.interactive
         or (request.model and (
-            request.model.startswith("interactive-") or request.model.startswith("hebras-interactive-")
+            request.model.startswith("interactive-") or request.model.startswith("agy-interactive-")
         ))
     )
 
@@ -274,7 +274,7 @@ async def _handle_non_streaming(
         workspace=session.workspace,
     )
 
-    # Special DEV log level recording full messages and reflection in hebras.log
+    # Special DEV log level recording full messages and reflection in agy_api.log
     logger.log(
         DEV_LEVEL,
         f"Chat turn {session.turn_count} [DEV]",
@@ -457,7 +457,7 @@ async def _handle_streaming(
             workspace=session.workspace,
         )
 
-        # Special DEV log level recording full messages and reflection in hebras.log
+        # Special DEV log level recording full messages and reflection in agy_api.log
         logger.log(
             DEV_LEVEL,
             f"Chat turn {session.turn_count} [DEV]",
@@ -560,7 +560,7 @@ async def _handle_interactive(
         workspace=session.workspace,
     )
 
-    # Special DEV log level recording full messages and reflection in hebras.log
+    # Special DEV log level recording full messages and reflection in agy_api.log
     logger.log(
         DEV_LEVEL,
         f"Chat turn {session.turn_count} [DEV]",

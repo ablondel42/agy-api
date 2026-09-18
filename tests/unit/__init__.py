@@ -1,1 +1,1 @@
-"""Unit tests for hebras-ai core modules."""
+"""Unit tests for agy-api core modules."""

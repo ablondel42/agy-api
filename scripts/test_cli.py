@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-hebras-ai Interactive Test CLI
+agy-api Interactive Test CLI
 
-A minimal command-line tool for testing the hebras-ai API server.
+A minimal command-line tool for testing the agy-api API server.
 Start the server first:  uvicorn backend.main:app --reload --port 8000
 Then run this:           python3 scripts/test_cli.py
 """
@@ -16,7 +16,7 @@ import httpx
 
 BASE_URL = "http://localhost:8000"
 DEFAULT_AGENT = "default"
-DEFAULT_MODEL = "Gemini 3.7 Flash"
+DEFAULT_MODEL = "Gemini 3.8 Flash"
 DEFAULT_REFLECTION = "high"
 
 # ── Colors ───────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ MAGENTA = "\033[35m"
 def print_header():
     print(f"""
 {CYAN}{BOLD}╔══════════════════════════════════════════════╗
-║         hebras-ai  ·  Test CLI               ║
+║          agy-api  ·  Test CLI                ║
 ╚══════════════════════════════════════════════╝{RESET}
 {DIM}Server: {BASE_URL}
 Type a command or 'help' to see options.{RESET}
@@ -50,7 +50,7 @@ def print_help():
   {GREEN}agents{RESET}                  List available agent personas (GET /v1/agents)
   {GREEN}agent{RESET}      {DIM}<name>{RESET}      Switch active agent persona (e.g. default, code_reviewer)
   {GREEN}models{RESET}                  List available LLM models (GET /v1/models)
-  {GREEN}model{RESET}      {DIM}<name>{RESET}      Switch active LLM model (e.g. Gemini 3.7 Flash)
+  {GREEN}model{RESET}      {DIM}<name>{RESET}      Switch active LLM model (e.g. Gemini 3.8 Flash)
   {GREEN}level{RESET}      {DIM}<level>{RESET}     Switch reflection level (low, medium, high)
   {GREEN}chat{RESET}       {DIM}<message>{RESET}    Send a non-streaming chat message
   {GREEN}stream{RESET}     {DIM}<message>{RESET}    Send a streaming chat message (SSE)
@@ -339,7 +339,7 @@ def main():
 
     while True:
         try:
-            prompt_str = f"{CYAN}hebras [{current_agent} | {current_model} | {current_reflection}]>{RESET} "
+            prompt_str = f"{CYAN}agy [{current_agent} | {current_model} | {current_reflection}]>{RESET} "
             raw_input = input(prompt_str).strip()
         except (EOFError, KeyboardInterrupt):
             print(f"\n{DIM}Goodbye!{RESET}")

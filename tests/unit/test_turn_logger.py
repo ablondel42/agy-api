@@ -20,7 +20,7 @@ class TestTurnLogger:
         assert dt.tzinfo is not None
 
     def test_get_log_datetime_custom_timezone(self, monkeypatch):
-        """Verify custom HEBRAS_LOG_TIMEZONE is respected."""
+        """Verify custom AGY_LOG_TIMEZONE is respected."""
         monkeypatch.setattr("backend.turn_logger.settings.log_timezone", "America/New_York")
         dt = get_log_datetime()
         assert dt.tzinfo is not None

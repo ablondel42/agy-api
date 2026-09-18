@@ -58,10 +58,27 @@ class TestModelsEndpoint:
             assert "owned_by" in model
             assert model["owned_by"] == "google"
 
+    async def test_fallback_to_default_model(self, client):
+        """Test fallback returns settings.agy_default_model (Gemini 3.8 Flash) when discovery returns empty."""
+        mock_res = ExecutionResult(returncode=1, stdout="", stderr="Error", duration_ms=10)
+
+        # Clear cached models
+        models_module._cached_models = None
+        models_module._cached_catalog = None
+        models_module._last_cache_time = 0.0
+
+        with patch("backend.routes.models.safe_run_command", new_callable=AsyncMock, return_value=mock_res):
+            resp = await client.get("/v1/models")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        model_ids = [m["id"] for m in data["data"]]
+        assert model_ids == ["Gemini 3.8 Flash"]
+
     async def test_root_endpoint(self, client):
         """Test root endpoint returns version info."""
         resp = await client.get("/")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["message"] == "hebras-ai"
+        assert data["message"] == "agy-api"
         assert "version" in data

@@ -14,9 +14,10 @@ class TestSessionManager:
     """Tests for the SessionManager pool."""
 
     async def test_create_session(self, manager):
-        """Verify session creation."""
+        """Verify session creation with default model and agent."""
         session = await manager.create_session(agent="default")
         assert session.agent == "default"
+        assert session.model == "Gemini 3.8 Flash"
         assert session.session_id is not None
 
     async def test_create_session_with_workspace(self, manager):

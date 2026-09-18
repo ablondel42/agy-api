@@ -1,1 +1,1 @@
-"""backend package for hebras-ai."""
+"""backend package for agy-api."""

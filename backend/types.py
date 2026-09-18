@@ -52,7 +52,7 @@ class ChatCompletionRequest(BaseModel):
     response_format: ResponseFormat | None = None
     seed: int | None = None
     user: str | None = None
-    # hebras-specific extensions
+    # agy-specific extensions
     workspace: str | None = None  # maps to --add-dir
     conversation_id: str | None = None  # explicit conversation continuation
     interactive: bool = False  # True = persistent background PTY session

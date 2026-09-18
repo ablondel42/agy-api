@@ -1,1 +1,1 @@
-"""Integration tests for hebras-ai API endpoints."""
+"""Integration tests for agy-api API endpoints."""

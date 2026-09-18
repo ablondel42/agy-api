@@ -1,4 +1,4 @@
-"""Shared test fixtures for hebras-ai."""
+"""Shared test fixtures for agy-api."""
 import pytest
 from httpx import ASGITransport, AsyncClient
 

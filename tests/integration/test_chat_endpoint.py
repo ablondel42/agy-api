@@ -171,7 +171,7 @@ class TestChatCompletionsNonStreaming:
         assert data["model"] == "Claude Sonnet 4.6"
 
     async def test_missing_fields_defaults(self, client):
-        """Test that requests omitting agent and model use settings defaults (Gemini 3.7 Flash)."""
+        """Test that requests omitting agent and model use settings defaults (Gemini 3.8 Flash)."""
         mock_result = {
             "conversation_id": "test-conv-raw",
             "response": "raw ok",
@@ -187,10 +187,10 @@ class TestChatCompletionsNonStreaming:
             )
 
         assert resp.status_code == 200
-        assert resp.json()["model"] == "Gemini 3.7 Flash"
+        assert resp.json()["model"] == "Gemini 3.8 Flash"
         assert resp.json()["agent"] == "default"
         assert mock.call_args.kwargs["agent"] == "default"
-        assert mock.call_args.kwargs["model"] == "Gemini 3.7 Flash (High)"
+        assert mock.call_args.kwargs["model"] == "Gemini 3.8 Flash (High)"
 
 
 class TestChatCompletionsStreaming:

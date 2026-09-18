@@ -86,8 +86,8 @@ class TestChatCompletionRequest:
         assert req.workspace is None
         assert req.conversation_id is None
 
-    def test_request_with_hebras_extensions(self):
-        """Verify hebras-specific extension fields parse correctly."""
+    def test_request_with_agy_extensions(self):
+        """Verify agy-specific extension fields parse correctly."""
         data = {
             "agent": "coder",
             "model": "Claude Sonnet 4.6",

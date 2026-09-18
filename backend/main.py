@@ -1,4 +1,4 @@
-"""FastAPI application factory and ASGI entry point for hebras-ai backend."""
+"""FastAPI application factory and ASGI entry point for agy-api backend."""
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -31,7 +31,7 @@ def create_app() -> FastAPI:
         Configured FastAPI app with all routers, middleware, and lifespan.
     """
     app = FastAPI(
-        title="hebras-ai",
+        title="agy-api",
         description="OpenAI-compatible API server powered by AGY CLI",
         version="0.1.0",
         lifespan=lifespan,
@@ -60,7 +60,7 @@ def create_app() -> FastAPI:
     # Root endpoint for health check and version
     @app.get("/")
     async def root():
-        return {"message": "hebras-ai", "version": "0.1.0"}
+        return {"message": "agy-api", "version": "0.1.0"}
 
     return app
 

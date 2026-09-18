@@ -1,1 +1,1 @@
-"""Routes package for hebras-ai API."""
+"""Routes package for agy-api."""

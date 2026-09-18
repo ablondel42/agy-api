@@ -62,7 +62,7 @@ class JSONFormatter(logging.Formatter):
 
 
 def setup_logging() -> None:
-    """Configure root logger with stdout and log/hebras.log file output."""
+    """Configure root logger with stdout and log/agy_api.log file output."""
     root = logging.getLogger()
 
     log_level_str = settings.log_level.upper()
@@ -90,7 +90,7 @@ def setup_logging() -> None:
             log_dir = Path(settings.agy_log_dir).expanduser().resolve()
             log_dir.mkdir(parents=True, exist_ok=True)
             file_handler = RotatingFileHandler(
-                log_dir / "hebras.log",
+                log_dir / "agy_api.log",
                 maxBytes=10_000_000,
                 backupCount=5,
                 encoding="utf-8",

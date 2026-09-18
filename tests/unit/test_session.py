@@ -1,10 +1,11 @@
 """Tests for AgySession."""
 import time
+import unittest
 
 from backend.session import AgySession
 
 
-class TestAgySession:
+class TestAgySession(unittest.TestCase):
     """Tests for the AgySession dataclass."""
 
     def test_default_creation(self):
@@ -13,7 +14,7 @@ class TestAgySession:
         assert session.session_id is not None
         assert len(session.session_id) == 32  # hex UUID
         assert session.agent == "default"
-        assert session.model == "Gemini 3.7 Flash"
+        assert session.model == "Gemini 3.8 Flash"
         assert session.conversation_id is None
         assert session.workspace is None
         assert session.turn_count == 0
