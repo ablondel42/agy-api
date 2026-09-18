@@ -1,0 +1,36 @@
+"""OpenAI-compatible request and response Pydantic models with clear Agent & Model separation."""
+from api_types import (
+    AgentInfo,
+    AgentListResponse,
+    ChatCompletionChunk,
+    ChatCompletionMessage,
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    ChatMessage,
+    Choice,
+    DeltaContent,
+    JsonSchemaFormat,
+    ModelInfo,
+    ModelListResponse,
+    ResponseFormat,
+    StreamChoice,
+    UsageInfo,
+)
+
+__all__ = [
+    "ChatMessage",
+    "JsonSchemaFormat",
+    "ResponseFormat",
+    "ChatCompletionRequest",
+    "ChatCompletionMessage",
+    "Choice",
+    "UsageInfo",
+    "ChatCompletionResponse",
+    "DeltaContent",
+    "StreamChoice",
+    "ChatCompletionChunk",
+    "ModelInfo",
+    "ModelListResponse",
+    "AgentInfo",
+    "AgentListResponse",
+]

@@ -26,30 +26,34 @@ An OpenAI-compatible API server powered by the Google Antigravity (`agy`) CLI.
 
 ```
 agy-api/
-├── backend/
-│   ├── main.py               # FastAPI application factory and ASGI entry point
-│   ├── config.py             # Configuration and environment variable settings
-│   ├── types.py              # Pydantic schemas (OpenAI-compatible request/response models)
-│   ├── session.py            # Session abstractions and state tracking
-│   ├── session_manager.py    # Session pool lifecycle and eviction
-│   ├── agy_process.py        # Subprocess execution for non-interactive / streaming commands
-│   ├── agy_interactive.py    # PTY-driven interactive session handling via pexpect
-│   ├── safe_runner.py        # Subprocess execution utility with timeout handling
-│   ├── ansi_utils.py         # ANSI escape code sanitization
-│   ├── logging_config.py     # Logging setup (supports DEV/DEBUG/INFO, text/json formats)
-│   ├── turn_logger.py        # Turn logger and thinking transcript extractor
-│   └── routes/
-│       ├── chat.py           # POST /v1/chat/completions
-│       ├── models.py         # GET /v1/models
-│       └── agents.py         # GET /v1/agents
-├── scripts/
-│   └── test_cli.py           # Interactive terminal CLI to test the API
-├── tests/
-│   ├── unit/                 # Unit tests (session, runners, types, utils)
-│   └── integration/          # Integration tests for API routes
+├── src/
+│   ├── backend/              # Standalone FastAPI API server project
+│   │   ├── main.py           # FastAPI application factory and ASGI entry point
+│   │   ├── config.py         # Configuration and environment variable settings
+│   │   ├── api_types.py      # Pydantic schemas (OpenAI-compatible request/response models)
+│   │   ├── types.py          # Type model re-exports
+│   │   ├── session.py        # Session abstractions and state tracking
+│   │   ├── session_manager.py# Session pool lifecycle and eviction
+│   │   ├── agy_process.py    # Subprocess execution for non-interactive / streaming commands
+│   │   ├── agy_interactive.py# PTY-driven interactive session handling via pexpect
+│   │   ├── safe_runner.py    # Subprocess execution utility with timeout handling
+│   │   ├── ansi_utils.py     # ANSI escape code sanitization
+│   │   ├── logging_config.py # Logging setup (supports DEV/DEBUG/INFO, text/json formats)
+│   │   ├── turn_logger.py    # Turn logger and thinking transcript extractor
+│   │   ├── routes/
+│   │   │   ├── chat.py       # POST /v1/chat/completions
+│   │   │   ├── models.py     # GET /v1/models
+│   │   │   └── agents.py     # GET /v1/agents
+│   │   ├── scripts/
+│   │   │   └── test_cli.py   # Interactive terminal CLI to test the API
+│   │   ├── tests/
+│   │   │   ├── unit/         # Unit tests (session, runners, types, utils)
+│   │   │   └── integration/  # Integration tests for API routes
+│   │   ├── pyproject.toml    # Backend packaging and tool configurations
+│   │   └── requirements.txt  # Python dependencies
+│   └── frontend/             # Frontend UI application
 ├── .agents/agents/           # Custom agent persona definitions
-├── pyproject.toml            # Project packaging and tool configurations
-└── requirements.txt          # Python dependencies
+└── README.md
 ```
 
 ---
@@ -121,14 +125,16 @@ AGY_LOG_FORMAT=text
 
 ### 1. Start the API Server
 
-You can run the server directly with Python or through `uvicorn`:
+You can run the server directly with Python or through `uvicorn` from `src/backend`:
 
 ```bash
+cd src/backend
+
 # Direct run:
-python -m backend.main
+python main.py
 
 # Or with uvicorn (with auto-reload):
-uvicorn backend.main:app --reload --port 8000
+uvicorn main:app --reload --port 8000
 ```
 
 Once running, verify the server is healthy:
@@ -145,10 +151,10 @@ API documentation is automatically available at:
 
 ### 2. Run the Interactive Test CLI
 
-A dedicated interactive CLI is provided in `scripts/test_cli.py` to test and inspect endpoints:
+A dedicated interactive CLI is provided in `src/backend/scripts/test_cli.py` to test and inspect endpoints:
 
 ```bash
-python scripts/test_cli.py
+python src/backend/scripts/test_cli.py
 ```
 
 Inside the CLI, you can type commands like:
@@ -227,9 +233,11 @@ print(response.choices[0].message.content)
 
 ## Development & Testing
 
-Run unit and integration tests using `pytest`:
+Run unit and integration tests using `pytest` from `src/backend`:
 
 ```bash
+cd src/backend
+
 # Run all tests:
 pytest
 
@@ -237,7 +245,7 @@ pytest
 pytest tests/unit
 
 # Run with coverage:
-pytest --cov=backend
+pytest --cov=.
 ```
 
 Run code formatting and linting:
