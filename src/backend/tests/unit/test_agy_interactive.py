@@ -10,7 +10,6 @@ class TestInteractiveSession:
     def test_default_config(self, tmp_path):
         session = InteractiveSession(agent="default", workspace=str(tmp_path))
         assert session.agent == "default"
-        assert session.auto_approve is False
         assert not session.is_alive()
         assert session.conversation_id is not None
 

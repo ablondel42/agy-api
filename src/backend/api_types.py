@@ -57,7 +57,10 @@ class ChatCompletionRequest(BaseModel):
     conversation_id: str | None = None  # explicit conversation continuation
     interactive: bool = False  # True = persistent background PTY session
     mode: str | None = None  # e.g. 'plan' or 'accept-edits'
-    dangerously_skip_permissions: bool = False  # Explicit opt-in required for auto-approving tools
+    sandbox: bool = False  # True = enable terminal restrictions
+    project: str | None = None  # project ID or name
+    extra_flags: list[str] | None = None  # optional additional agy CLI flags
+    dangerously_skip_permissions: bool = False  # Deprecated: permissions bypass is not allowed
     reflection: Literal["low", "medium", "high"] | None = None  # Level of reflection/thinking
     reasoning_effort: Literal["low", "medium", "high"] | None = None  # OpenAI standard field for reasoning effort
     # Standard OpenAI tool and function calling fields
@@ -103,6 +106,7 @@ class ChatCompletionResponse(BaseModel):
     choices: list[Choice]
     usage: UsageInfo
     system_fingerprint: str | None = None
+    transcript: list[dict[str, Any]] | None = None  # Full unformatted transcript steps from agy
 
 
 # ── Streaming Chunk Models ──────────────────────────────────────

@@ -24,7 +24,12 @@ from config import settings
 from routes.models import resolve_agy_model_target
 from session import AgySession
 from session_manager import SessionManager, SessionNotFound, SessionPoolFull
-from turn_logger import extract_turn_thinking, log_turn
+from turn_logger import (
+    collect_turn_transcript,
+    extract_error_from_transcript,
+    extract_turn_thinking,
+    log_turn,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -221,6 +226,8 @@ async def _handle_non_streaming(
 ) -> ChatCompletionResponse:
     """Handle non-streaming chat completion."""
     start_t = time.monotonic()
+    start_line = session.metadata.get("transcript_line_count", 0)
+
     try:
         result = await run_agy(
             prompt=prompt,
@@ -229,6 +236,10 @@ async def _handle_non_streaming(
             conversation_id=session.conversation_id,
             workspace=session.workspace,
             model=agy_target_model,
+            mode=request.mode or settings.agy_default_mode,
+            sandbox=request.sandbox or settings.agy_default_sandbox,
+            project=request.project or settings.agy_default_project,
+            extra_flags=request.extra_flags,
         )
     except AgyProcessError as e:
         logger.error(f"agy process error: {e}", extra={"stderr": e.stderr})
@@ -245,6 +256,20 @@ async def _handle_non_streaming(
     if isinstance(response_text, dict):
         response_text = json.dumps(response_text)
 
+    # Collect the full raw transcript directly from agy's transcript log
+    transcript_entries, transcript_raw, new_line_count = collect_turn_transcript(
+        session.conversation_id, since_line=start_line
+    )
+    if new_line_count > start_line:
+        session.metadata["transcript_line_count"] = new_line_count
+
+    # When a tool execution is denied and the agent produces no text,
+    # the response should be the error message that came back from agy
+    if not response_text or not str(response_text).strip():
+        transcript_error = extract_error_from_transcript(transcript_entries) or result.get("error")
+        if transcript_error:
+            response_text = str(transcript_error).strip()
+
     # Extract usage info if available
     usage_data = result.get("usage", {})
     usage = UsageInfo(
@@ -254,9 +279,9 @@ async def _handle_non_streaming(
     )
 
     # Extract thinking/reflection from transcript if present
-    thinking = extract_turn_thinking(session.conversation_id)
+    thinking = extract_turn_thinking(session.conversation_id, since_line=start_line)
 
-    # Log turn for evaluation
+    # Log turn for evaluation with full raw transcript
     log_turn(
         conversation_id=session.conversation_id or session.session_id,
         turn=session.turn_count,
@@ -272,9 +297,11 @@ async def _handle_non_streaming(
         usage=usage_data,
         duration_s=duration_s,
         workspace=session.workspace,
+        transcript_raw=transcript_raw,
+        transcript_entries=transcript_entries,
     )
 
-    # Special DEV log level recording full messages and reflection in agy_api.log
+    # Special DEV log level recording full messages, full raw transcript, and reflection in agy_api.log
     logger.log(
         DEV_LEVEL,
         f"Chat turn {session.turn_count} [DEV]",
@@ -287,6 +314,7 @@ async def _handle_non_streaming(
             "reflection_level": reflection,
             "mode": "non-streaming",
             "request_messages": [m.model_dump() for m in request.messages],
+            "transcript": transcript_entries,
             "thinking": thinking,
             "response": response_text,
             "duration_s": round(duration_s, 3),
@@ -310,6 +338,7 @@ async def _handle_non_streaming(
         ],
         usage=usage,
         system_fingerprint=session.conversation_id or session.session_id,
+        transcript=transcript_entries,
     )
 
 
@@ -328,6 +357,7 @@ async def _handle_streaming(
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     created = int(time.time())
     start_t = time.monotonic()
+    start_line = session.metadata.get("transcript_line_count", 0)
 
     async def event_generator():
         collected_text_parts: list[str] = []
@@ -352,6 +382,10 @@ async def _handle_streaming(
                 conversation_id=session.conversation_id,
                 workspace=session.workspace,
                 model=agy_target_model,
+                mode=request.mode or settings.agy_default_mode,
+                sandbox=request.sandbox or settings.agy_default_sandbox,
+                project=request.project or settings.agy_default_project,
+                extra_flags=request.extra_flags,
             ):
                 # agy NDJSON uses "event" (e.g. "init", "step_update", "result"), fallback to "type"
                 event_name = event.get("event") or event.get("type", "")
@@ -436,10 +470,33 @@ async def _handle_streaming(
         full_response = "".join(collected_text_parts)
         duration_s = time.monotonic() - start_t
 
-        # Extract thinking/reflection from transcript if present
-        thinking = extract_turn_thinking(session.conversation_id)
+        # Collect full raw transcript directly from agy's transcript log
+        transcript_entries, transcript_raw, new_line_count = collect_turn_transcript(
+            session.conversation_id, since_line=start_line
+        )
+        if new_line_count > start_line:
+            session.metadata["transcript_line_count"] = new_line_count
 
-        # Log turn for evaluation
+        # When a tool execution is denied and the agent produces no text,
+        # emit the error message that came back from agy as a stream chunk
+        if not full_response or not str(full_response).strip():
+            transcript_error = extract_error_from_transcript(transcript_entries)
+            if transcript_error:
+                full_response = str(transcript_error).strip()
+                err_chunk = ChatCompletionChunk(
+                    id=completion_id,
+                    created=created,
+                    model=clean_model,
+                    agent=agent,
+                    choices=[StreamChoice(delta=DeltaContent(content=full_response))],
+                    system_fingerprint=session.conversation_id or session.session_id,
+                )
+                yield f"data: {err_chunk.model_dump_json()}\n\n"
+
+        # Extract thinking/reflection from transcript if present
+        thinking = extract_turn_thinking(session.conversation_id, since_line=start_line)
+
+        # Log turn for evaluation with full raw transcript
         log_turn(
             conversation_id=session.conversation_id or session.session_id,
             turn=session.turn_count,
@@ -455,9 +512,11 @@ async def _handle_streaming(
             usage=last_usage_data,
             duration_s=duration_s,
             workspace=session.workspace,
+            transcript_raw=transcript_raw,
+            transcript_entries=transcript_entries,
         )
 
-        # Special DEV log level recording full messages and reflection in agy_api.log
+        # Special DEV log level recording full messages, full raw transcript, and reflection in agy_api.log
         logger.log(
             DEV_LEVEL,
             f"Chat turn {session.turn_count} [DEV]",
@@ -470,6 +529,7 @@ async def _handle_streaming(
                 "reflection_level": reflection,
                 "mode": "streaming",
                 "request_messages": [m.model_dump() for m in request.messages],
+                "transcript": transcript_entries,
                 "thinking": thinking,
                 "response": full_response,
                 "duration_s": round(duration_s, 3),
@@ -518,7 +578,6 @@ async def _handle_interactive(
             workspace=session.workspace or settings.agy_default_workspace,
             model=agy_target_model,
             mode=request.mode,
-            auto_approve=request.dangerously_skip_permissions,
             conversation_id=session.conversation_id,
         )
         try:

@@ -43,9 +43,17 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("agy_default_mode", "AGY_DEFAULT_MODE", "AGY_AGY_DEFAULT_MODE"),
     )
+    agy_default_sandbox: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("agy_default_sandbox", "AGY_DEFAULT_SANDBOX", "AGY_AGY_DEFAULT_SANDBOX"),
+    )
+    agy_default_project: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("agy_default_project", "AGY_DEFAULT_PROJECT", "AGY_AGY_DEFAULT_PROJECT"),
+    )
     agy_dangerously_skip_permissions: bool = Field(
         default=False,
-        validation_alias=AliasChoices("agy_dangerously_skip_permissions", "AGY_DANGEROUSLY_SKIP_PERMISSIONS", "AGY_AGY_DANGEROUSLY_SKIP_PERMISSIONS"),
+        description="Deprecated: permissions bypass is not allowed",
     )
     agy_interactive_timeout: int = Field(
         default=180,

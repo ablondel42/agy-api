@@ -123,3 +123,77 @@ class TestTurnLogger:
             assert "[SYSTEM INSTRUCTIONS]\n(None)" in content
             assert "[USER PROMPT]\nGive an example of Python code." in content
             assert "[RESPONSE]\nprint('Hello World')" in content
+
+    def test_collect_turn_transcript_and_extract_error(self, tmp_path, monkeypatch):
+        """Verify collect_turn_transcript and extract_error_from_transcript."""
+        from turn_logger import collect_turn_transcript, extract_error_from_transcript
+
+        cid = "test-conv-trans-123"
+        log_dir = tmp_path / "brain" / cid / ".system_generated" / "logs"
+        log_dir.mkdir(parents=True)
+        transcript_file = log_dir / "transcript_full.jsonl"
+
+        step1 = {"step_index": 1, "source": "USER", "type": "USER_INPUT", "content": "what's my name?"}
+        step2 = {
+            "step_index": 2,
+            "source": "MODEL",
+            "type": "PLANNER_RESPONSE",
+            "status": "ERROR",
+            "content": "permission check failed for command 'git config user.name': user denied permission",
+        }
+        transcript_file.write_text(f"{json.dumps(step1)}\n{json.dumps(step2)}\n", encoding="utf-8")
+
+        monkeypatch.setattr("turn_logger.settings.agy_app_data_dir", str(tmp_path))
+
+        raw, steps, total_lines = collect_turn_transcript(cid, since_line=0)
+        assert total_lines == 2
+        assert len(steps) == 2
+        assert steps[0]["content"] == "what's my name?"
+        assert steps[1]["status"] == "ERROR"
+        assert "permission check failed" in raw
+
+        error = extract_error_from_transcript(steps)
+        assert error is not None
+        assert "user denied permission" in error
+
+    def test_collect_turn_transcript_since_line(self, tmp_path, monkeypatch):
+        """Verify collect_turn_transcript respects since_line offset."""
+        from turn_logger import collect_turn_transcript
+
+        cid = "test-conv-trans-offset"
+        log_dir = tmp_path / "brain" / cid / ".system_generated" / "logs"
+        log_dir.mkdir(parents=True)
+        transcript_file = log_dir / "transcript_full.jsonl"
+
+        step1 = {"step_index": 1, "content": "turn 1"}
+        step2 = {"step_index": 2, "content": "turn 2"}
+        transcript_file.write_text(f"{json.dumps(step1)}\n{json.dumps(step2)}\n", encoding="utf-8")
+
+        monkeypatch.setattr("turn_logger.settings.agy_app_data_dir", str(tmp_path))
+
+        raw, steps, total_lines = collect_turn_transcript(cid, since_line=1)
+        assert total_lines == 2
+        assert len(steps) == 1
+        assert steps[0]["content"] == "turn 2"
+
+    def test_log_turn_with_transcript_raw(self, tmp_path):
+        """Verify log_turn includes [TRANSCRIPT LOG] when transcript_raw is provided."""
+        cid = "test-conv-trans-log"
+        log_path = log_turn(
+            conversation_id=cid,
+            turn=1,
+            agent="default",
+            model="Gemini 3.8 Flash",
+            target_model="Gemini 3.8 Flash",
+            reflection="high",
+            mode="non-streaming",
+            prompt="what's my name?",
+            response_text="Error: user denied permission",
+            transcript_raw='{"step_index": 1, "status": "ERROR"}\n',
+            workspace=str(tmp_path),
+            force_write=True,
+        )
+        assert log_path is not None
+        content = log_path.read_text(encoding="utf-8")
+        assert "[TRANSCRIPT LOG]" in content
+        assert '{"step_index": 1, "status": "ERROR"}' in content

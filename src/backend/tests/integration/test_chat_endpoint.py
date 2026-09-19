@@ -285,7 +285,73 @@ class TestChatCompletionsStreaming:
                 },
             )
 
-        assert resp2.status_code == 200
-        lines2 = [json.loads(line[6:]) for line in resp2.text.strip().split("\n\n") if line.startswith("data: ") and line != "data: [DONE]"]
         assert lines2[1]["choices"][0]["delta"]["content"] == "Turn 2 response"
         assert lines2[1]["system_fingerprint"] == "multi-stream-conv-999"
+
+    async def test_empty_response_surfaces_transcript_error_non_streaming(self, client):
+        """Test that empty response text falls back to transcript error message."""
+        mock_result = {
+            "conversation_id": "conv-empty-error",
+            "status": "SUCCESS",
+            "response": "",
+            "usage": {},
+        }
+        mock_steps = [
+            {
+                "step_index": 1,
+                "status": "ERROR",
+                "content": "permission check failed for command 'git config user.name': user denied permission",
+            }
+        ]
+
+        with patch("routes.chat.run_agy", new_callable=AsyncMock, return_value=mock_result), \
+             patch("routes.chat.collect_turn_transcript", return_value=("raw log", mock_steps, 1)):
+            resp = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "Gemini 3.8 Flash",
+                    "agent": "default",
+                    "messages": [{"role": "user", "content": "what's my name?"}],
+                    "stream": False,
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        assert "permission check failed" in content
+        assert "user denied permission" in content
+        assert data.get("transcript") == mock_steps
+
+    async def test_empty_response_surfaces_transcript_error_streaming(self, client):
+        """Test that empty streaming response falls back to streaming transcript error message."""
+        async def mock_stream(*args, **kwargs):
+            yield {"event": "init", "conversation_id": "stream-empty-error", "init": {}}
+            yield {"event": "result", "result": {"status": "SUCCESS", "usage": {}}}
+
+        mock_steps = [
+            {
+                "step_index": 1,
+                "status": "ERROR",
+                "content": "permission check failed for command 'git config user.name': user denied permission",
+            }
+        ]
+
+        with patch("routes.chat.stream_agy", side_effect=mock_stream), \
+             patch("routes.chat.collect_turn_transcript", return_value=("raw log", mock_steps, 1)):
+            resp = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "Gemini 3.8 Flash",
+                    "agent": "default",
+                    "messages": [{"role": "user", "content": "what's my name?"}],
+                    "stream": True,
+                },
+            )
+
+        assert resp.status_code == 200
+        lines = [line for line in resp.text.strip().split("\n\n") if line.startswith("data: ") and line != "data: [DONE]"]
+        event_contents = [json.loads(line[6:])["choices"][0].get("delta", {}).get("content", "") for line in lines]
+        combined = "".join(filter(None, event_contents))
+        assert "permission check failed" in combined
+        assert "user denied permission" in combined

@@ -31,7 +31,6 @@ agy-api/
 │   │   ├── main.py           # FastAPI application factory and ASGI entry point
 │   │   ├── config.py         # Configuration and environment variable settings
 │   │   ├── api_types.py      # Pydantic schemas (OpenAI-compatible request/response models)
-│   │   ├── types.py          # Type model re-exports
 │   │   ├── session.py        # Session abstractions and state tracking
 │   │   ├── session_manager.py# Session pool lifecycle and eviction
 │   │   ├── agy_process.py    # Subprocess execution for non-interactive / streaming commands

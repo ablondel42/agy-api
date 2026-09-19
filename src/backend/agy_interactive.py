@@ -37,14 +37,12 @@ class InteractiveSession:
         workspace: str | None = None,
         model: str | None = None,
         mode: str | None = None,
-        auto_approve: bool | None = None,
         conversation_id: str | None = None,
     ):
         self.agent = agent
         self.workspace = workspace or settings.agy_default_workspace
         self.model = model or settings.agy_default_model
         self.mode = mode or settings.agy_default_mode
-        self.auto_approve = settings.agy_dangerously_skip_permissions if auto_approve is None else auto_approve
         self.conversation_id = conversation_id or str(uuid.uuid4())
         self.child: pexpect.spawn | None = None
         self._dump_file: Any = None
@@ -112,8 +110,6 @@ class InteractiveSession:
 
         if self.model:
             cmd_parts.extend(["--model", self.model])
-        if self.auto_approve:
-            cmd_parts.append("--dangerously-skip-permissions")
 
         cmd = " ".join(f'"{p}"' if " " in p else p for p in cmd_parts)
 

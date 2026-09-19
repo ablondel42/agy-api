@@ -34,6 +34,83 @@ def get_log_datetime() -> datetime:
     return datetime.now().astimezone()
 
 
+def get_transcript_path(conversation_id: str | None) -> Path | None:
+    """Resolve the path to the agy internal transcript file for a conversation."""
+    if not conversation_id:
+        return None
+
+    transcript_full = (
+        Path.home()
+        / ".gemini"
+        / "antigravity-cli"
+        / "brain"
+        / conversation_id
+        / ".system_generated"
+        / "logs"
+        / "transcript_full.jsonl"
+    )
+    if transcript_full.exists():
+        return transcript_full
+
+    fallback = transcript_full.parent / "transcript.jsonl"
+    if fallback.exists():
+        return fallback
+
+    return transcript_full
+
+
+def collect_turn_transcript(
+    conversation_id: str | None,
+    since_line: int = 0,
+) -> tuple[list[dict[str, Any]], str, int]:
+    """Collect the raw transcript entries for a turn directly as logged by agy.
+
+    Reads every step (prompts, tool calls, arguments, outputs, errors, statuses)
+    without dropping or cherry-picking fields.
+
+    Args:
+        conversation_id: Conversation UUID.
+        since_line: Line index to start reading from.
+
+    Returns:
+        Tuple of (parsed_entries_list, raw_jsonl_text, new_line_count).
+    """
+    path = get_transcript_path(conversation_id)
+    if not path or not path.exists():
+        return [], "", since_line
+
+    entries: list[dict[str, Any]] = []
+    raw_lines: list[str] = []
+    total_lines = 0
+
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f):
+                total_lines += 1
+                if i < since_line or not line.strip():
+                    continue
+                raw_lines.append(line.rstrip("\r\n"))
+                try:
+                    entries.append(json.loads(line))
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.debug(f"Error reading transcript for {conversation_id}: {e}")
+
+    raw_text = "\n".join(raw_lines)
+    return entries, raw_text, total_lines
+
+
+def extract_error_from_transcript(entries: list[dict[str, Any]]) -> str | None:
+    """Extract error message from transcript steps if any error occurred."""
+    for entry in reversed(entries):
+        if entry.get("status") == "ERROR" or entry.get("error"):
+            err = entry.get("error") or entry.get("content")
+            if err and isinstance(err, str) and err.strip():
+                return err.strip()
+    return None
+
+
 def extract_turn_thinking(conversation_id: str | None, since_line: int = 0) -> str:
     """Extract LLM thinking/reflection text from the Antigravity transcript for the turn.
 
@@ -44,39 +121,12 @@ def extract_turn_thinking(conversation_id: str | None, since_line: int = 0) -> s
     Returns:
         Concatenated thinking/reflection string.
     """
-    if not conversation_id:
-        return ""
-
-    transcript_path = (
-        Path.home()
-        / ".gemini"
-        / "antigravity-cli"
-        / "brain"
-        / conversation_id
-        / ".system_generated"
-        / "logs"
-        / "transcript_full.jsonl"
-    )
-
-    if not transcript_path.exists():
-        return ""
-
+    entries, _, _ = collect_turn_transcript(conversation_id, since_line=since_line)
     thinking_parts: list[str] = []
-    try:
-        with open(transcript_path, encoding="utf-8", errors="replace") as f:
-            for i, line in enumerate(f):
-                if i < since_line or not line.strip():
-                    continue
-                try:
-                    step = json.loads(line)
-                    t = step.get("thinking")
-                    if t and isinstance(t, str) and t.strip():
-                        thinking_parts.append(t.strip())
-                except Exception:
-                    pass
-    except Exception as e:
-        logger.debug(f"Error reading transcript thinking for {conversation_id}: {e}")
-
+    for step in entries:
+        t = step.get("thinking")
+        if t and isinstance(t, str) and t.strip():
+            thinking_parts.append(t.strip())
     return "\n\n".join(thinking_parts)
 
 
@@ -96,8 +146,10 @@ def log_turn(
     duration_s: float | None = None,
     workspace: str | None = None,
     force_write: bool = False,
+    transcript_raw: str | None = None,
+    transcript_entries: list[dict[str, Any]] | None = None,
 ) -> Path | None:
-    """Log a complete turn (prompt + response + metadata + reflection) to the conversation log file.
+    """Log a complete turn (prompt + response + metadata + full raw transcript) to the conversation log file.
 
     Args:
         conversation_id: Unique conversation UUID.
@@ -115,6 +167,8 @@ def log_turn(
         duration_s: Optional duration in seconds.
         workspace: Optional workspace directory path.
         force_write: If True, writes even in test environments.
+        transcript_raw: Full raw unformatted JSONL transcript text for the turn.
+        transcript_entries: Optional list of parsed step dicts from the transcript.
 
     Returns:
         Path to written log file, or None if skipped.
@@ -142,9 +196,11 @@ def log_turn(
 
         dur_line = f"Duration: {duration_s:.3f}s\n" if duration_s is not None else ""
 
-        thinking_section = ""
-        if thinking and thinking.strip():
-            thinking_section = f"{'-' * 80}\n[REFLECTION / THINKING]\n{thinking.strip()}\n\n"
+        transcript_section = ""
+        if transcript_raw and transcript_raw.strip():
+            transcript_section = f"{'-' * 80}\n[TRANSCRIPT LOG]\n{transcript_raw.strip()}\n\n"
+        elif thinking and thinking.strip():
+            transcript_section = f"{'-' * 80}\n[REFLECTION / THINKING]\n{thinking.strip()}\n\n"
 
         entry = (
             f"{'=' * 80}\n"
@@ -156,7 +212,7 @@ def log_turn(
             f"{'-' * 80}\n"
             f"[SYSTEM INSTRUCTIONS]\n{system_prompt or '(None)'}\n\n"
             f"[USER PROMPT]\n{prompt}\n\n"
-            f"{thinking_section}"
+            f"{transcript_section}"
             f"{'-' * 80}\n"
             f"[RESPONSE]\n{response_text}\n"
             f"{'=' * 80}\n\n"

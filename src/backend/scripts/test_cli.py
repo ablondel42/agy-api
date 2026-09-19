@@ -18,6 +18,7 @@ BASE_URL = "http://localhost:8000"
 DEFAULT_AGENT = "default"
 DEFAULT_MODEL = "Gemini 3.8 Flash"
 DEFAULT_REFLECTION = "high"
+LAST_TRANSCRIPT: list[dict] = []
 
 # ── Colors ───────────────────────────────────────────────────────
 
@@ -52,8 +53,10 @@ def print_help():
   {GREEN}models{RESET}                  List available LLM models (GET /v1/models)
   {GREEN}model{RESET}      {DIM}<name>{RESET}      Switch active LLM model (e.g. Gemini 3.8 Flash)
   {GREEN}level{RESET}      {DIM}<level>{RESET}     Switch reflection level (low, medium, high)
+  {GREEN}mode{RESET}       {DIM}<mode>{RESET}      Switch execution mode (e.g. plan, accept-edits)
   {GREEN}chat{RESET}       {DIM}<message>{RESET}    Send a non-streaming chat message
   {GREEN}stream{RESET}     {DIM}<message>{RESET}    Send a streaming chat message (SSE)
+  {GREEN}transcript{RESET}                 Show full raw transcript steps from last response
   {GREEN}schema{RESET}     {DIM}<message>{RESET}    Send with JSON schema enforcement
   {GREEN}system{RESET}     {DIM}<inst>{RESET}       Set a system prompt for subsequent messages
   {GREEN}multi{RESET}      {DIM}[stream|sync]{RESET} Start interactive multi-turn conversation (default: stream)
@@ -139,6 +142,7 @@ def cmd_chat(
     stream: bool = False,
     json_schema: dict | None = None,
     conversation_id: str | None = None,
+    mode: str | None = None,
 ):
     """POST /v1/chat/completions"""
     messages = []
@@ -153,6 +157,8 @@ def cmd_chat(
         "messages": messages,
         "stream": stream,
     }
+    if mode:
+        payload["mode"] = mode
     if json_schema:
         payload["response_format"] = {
             "type": "json_schema",
@@ -164,8 +170,9 @@ def cmd_chat(
     if conversation_id:
         payload["conversation_id"] = conversation_id
 
-    mode = "streaming" if stream else "non-streaming"
-    print(f"\n{DIM}POST /v1/chat/completions (agent: {agent}, model: {model}, level: {reflection}, {mode}){RESET}")
+    stream_mode = "streaming" if stream else "non-streaming"
+    mode_str = f", mode: {mode}" if mode else ""
+    print(f"\n{DIM}POST /v1/chat/completions (agent: {agent}, model: {model}, level: {reflection}{mode_str}, {stream_mode}){RESET}")
 
     try:
         if stream:
@@ -183,12 +190,14 @@ def cmd_chat(
 
 def _handle_non_stream(payload):
     """Handle non-streaming response."""
+    global LAST_TRANSCRIPT
     r = httpx.post(f"{BASE_URL}/v1/chat/completions", json=payload, timeout=180)
     if r.status_code != 200:
         print(f"{RED}HTTP {r.status_code}: {r.text}{RESET}")
         return None
 
     data = r.json()
+    LAST_TRANSCRIPT = data.get("transcript") or []
     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
     print(f"{BOLD}{MAGENTA}Assistant:{RESET}")
@@ -196,6 +205,32 @@ def _handle_non_stream(payload):
     print_response_meta(data)
 
     return data
+
+
+def cmd_transcript(raw: bool = False):
+    """Display the full transcript from the last chat completion."""
+    if not LAST_TRANSCRIPT:
+        print(f"{YELLOW}No transcript available from the last turn.{RESET}")
+        return
+    print(f"\n{BOLD}Full Transcript ({len(LAST_TRANSCRIPT)} steps):{RESET}")
+    for i, step in enumerate(LAST_TRANSCRIPT, 1):
+        step_idx = step.get("step_index", i)
+        source = step.get("source", "?")
+        stype = step.get("type", "?")
+        status = step.get("status", "")
+        status_str = f" | status: {status}" if status else ""
+        print(f"\n{CYAN}── Step {step_idx} [{source} | {stype}{status_str}] ──{RESET}")
+        if raw:
+            print(pretty_json(step))
+        else:
+            if step.get("thinking"):
+                print(f"{MAGENTA}[Thinking]:{RESET}\n{step['thinking']}")
+            if step.get("content"):
+                print(f"{GREEN}[Content]:{RESET}\n{step['content']}")
+            if step.get("tool_calls"):
+                print(f"{YELLOW}[Tool Calls]:{RESET}\n{pretty_json(step['tool_calls'])}")
+            if step.get("error"):
+                print(f"{RED}[Error]:{RESET}\n{step['error']}")
 
 
 def _handle_stream(payload, agent_name: str, model_name: str):
@@ -253,10 +288,12 @@ def cmd_multi_turn(
     reflection: str,
     system_prompt: str | None = None,
     stream: bool = True,
+    mode: str | None = None,
 ):
     """Interactive multi-turn conversation (streaming by default)."""
     mode_label = "streaming" if stream else "non-streaming"
-    print(f"\n{BOLD}Multi-turn conversation (agent: {agent}, model: {model}, level: {reflection}, mode: {mode_label}){RESET} {DIM}(type 'done' to exit){RESET}")
+    mode_str = f", mode: {mode}" if mode else ""
+    print(f"\n{BOLD}Multi-turn conversation (agent: {agent}, model: {model}, level: {reflection}{mode_str}, mode: {mode_label}){RESET} {DIM}(type 'done' to exit){RESET}")
     conversation_id = None
     turn = 0
 
@@ -277,6 +314,7 @@ def cmd_multi_turn(
             system_prompt=system_prompt if turn == 1 else None,
             stream=stream,
             conversation_id=conversation_id,
+            mode=mode,
         )
         if result:
             cid = result.get("system_fingerprint")
@@ -335,11 +373,13 @@ def main():
     current_agent = DEFAULT_AGENT
     current_model = DEFAULT_MODEL
     current_reflection = DEFAULT_REFLECTION
+    current_mode = None
     system_prompt = None
 
     while True:
         try:
-            prompt_str = f"{CYAN}agy [{current_agent} | {current_model} | {current_reflection}]>{RESET} "
+            mode_tag = f" | {current_mode}" if current_mode else ""
+            prompt_str = f"{CYAN}agy [{current_agent} | {current_model} | {current_reflection}{mode_tag}]>{RESET} "
             raw_input = input(prompt_str).strip()
         except (EOFError, KeyboardInterrupt):
             print(f"\n{DIM}Goodbye!{RESET}")
@@ -396,6 +436,16 @@ def main():
             else:
                 print(f"Active reflection level: {BOLD}{current_reflection}{RESET}")
 
+        elif cmd == "mode":
+            if arg:
+                current_mode = arg.strip()
+                print(f"{GREEN}Switched mode to: {BOLD}{current_mode}{RESET}")
+            else:
+                print(f"Active mode: {BOLD}{current_mode or 'default'}{RESET}")
+
+        elif cmd in ("transcript", "transcripts"):
+            cmd_transcript(raw="raw" in arg.lower())
+
         elif cmd == "system":
             if arg:
                 system_prompt = arg
@@ -410,13 +460,13 @@ def main():
             if not arg:
                 print(f"{YELLOW}Usage: chat <message>{RESET}")
                 continue
-            cmd_chat(arg, current_agent, current_model, current_reflection, system_prompt)
+            cmd_chat(arg, current_agent, current_model, current_reflection, system_prompt, mode=current_mode)
 
         elif cmd == "stream":
             if not arg:
                 print(f"{YELLOW}Usage: stream <message>{RESET}")
                 continue
-            cmd_chat(arg, current_agent, current_model, current_reflection, system_prompt, stream=True)
+            cmd_chat(arg, current_agent, current_model, current_reflection, system_prompt, stream=True, mode=current_mode)
 
         elif cmd == "schema":
             if not arg:
@@ -430,20 +480,20 @@ def main():
                 },
                 "required": ["files", "summary"],
             }
-            cmd_chat(arg, current_agent, current_model, current_reflection, system_prompt, json_schema=file_list_schema)
+            cmd_chat(arg, current_agent, current_model, current_reflection, system_prompt, json_schema=file_list_schema, mode=current_mode)
 
         elif cmd == "multi":
             is_stream = True
             if arg and arg.strip().lower() in ("sync", "non-stream", "non-streaming", "false"):
                 is_stream = False
-            cmd_multi_turn(current_agent, current_model, current_reflection, system_prompt, stream=is_stream)
+            cmd_multi_turn(current_agent, current_model, current_reflection, system_prompt, stream=is_stream, mode=current_mode)
 
         elif cmd == "raw":
             cmd_raw()
 
         else:
             # Treat unrecognized input as a chat message for convenience
-            cmd_chat(raw_input, current_agent, current_model, current_reflection, system_prompt)
+            cmd_chat(raw_input, current_agent, current_model, current_reflection, system_prompt, mode=current_mode)
 
 
 if __name__ == "__main__":
