@@ -45,12 +45,16 @@ agy-api/
 │   │   │   └── agents.py     # GET /v1/agents
 │   │   ├── scripts/
 │   │   │   └── test_cli.py   # Interactive terminal CLI to test the API
-│   │   ├── tests/
-│   │   │   ├── unit/         # Unit tests (session, runners, types, utils)
-│   │   │   └── integration/  # Integration tests for API routes
-│   │   ├── pyproject.toml    # Backend packaging and tool configurations
-│   │   └── requirements.txt  # Python dependencies
-│   └── frontend/             # Frontend UI application
+│   │   └── tests/
+│   │       ├── unit/         # Unit tests (session, runners, types, utils)
+│   │       └── integration/  # Integration tests for API routes
+│   ├── integrations/         # Framework integrations
+│   │   └── google_adk/       # Google Agent Development Kit (ADK) integration
+│   ├── frontend/             # Frontend UI application
+│   ├── system/               # System components
+│   ├── pyproject.toml        # Unified project packaging and tool configurations
+│   ├── requirements.txt      # Unified Python dependencies (backend, integrations)
+│   └── .venv/                # Shared virtual environment
 ├── .agents/agents/           # Custom agent persona definitions
 └── README.md
 ```
@@ -72,19 +76,20 @@ agy-api/
    cd agy-api
    ```
 
-2. **Create and activate a virtual environment**:
+2. **Create and activate a virtual environment in `src/`**:
    ```bash
+   cd src
    python3 -m venv .venv
    source .venv/bin/activate
    ```
 
 3. **Install dependencies**:
    ```bash
-   # Base dependencies:
+   # Unified dependencies (including backend & integrations):
    pip install -r requirements.txt
 
-   # Or in editable mode with development & test tools:
-   pip install -e ".[dev]"
+   # Or in editable mode:
+   pip install -e .
    ```
 
 ---
@@ -212,6 +217,35 @@ response = client.chat.completions.create(
 )
 
 print(response.choices[0].message.content)
+```
+
+---
+
+## Google ADK Integration
+
+`agy-api` includes an integration for the official [Google Agent Development Kit (ADK)](https://github.com/google/adk-python), allowing you to instantiate ADK agents backed by your local `agy-api` endpoints:
+
+```python
+from integrations.google_adk import GoogleADKConfig, create_agent
+
+# Define tools
+def get_weather(location: str) -> str:
+    return f"The weather in {location} is clear and sunny."
+
+# Configure and instantiate a Google ADK agent
+config = GoogleADKConfig(
+    base_url="http://localhost:8000/v1",
+    model="Gemini 3.8 Flash",
+    name="my_agent",
+    instruction="You are a helpful assistant.",
+    tools=[get_weather],
+)
+agent = create_agent(config)
+```
+
+ADK dependencies (`google-adk` and `openai`) are included in `src/requirements.txt`, or can be installed separately:
+```bash
+pip install google-adk openai
 ```
 
 ---

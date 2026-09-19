@@ -1,3 +1,11 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["backend*", "integrations*"]
+
 [project]
 name = "agy-api"
 version = "0.1.0"
@@ -10,6 +18,8 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "pexpect>=4.9.0",
     "python-dotenv>=1.0.0",
+    "google-adk>=2.8.0",
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -22,8 +32,8 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
-pythonpath = ["."]
+testpaths = ["backend/tests"]
+pythonpath = [".", "backend"]
 
 [tool.ruff]
 target-version = "py312"
