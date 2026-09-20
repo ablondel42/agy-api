@@ -157,3 +157,40 @@ def test_top_level_integrations_exports():
     assert hasattr(integrations, "create_agent")
     assert hasattr(integrations.google_adk, "GoogleADKConfig")
     assert hasattr(integrations.google_adk, "create_agent")
+
+
+def test_test_agent_get_weather(caplog: pytest.LogCaptureFixture):
+    """Verify test_agent get_weather tool and its logging."""
+    from integrations.google_adk.test_agent.agent import get_weather
+
+    with caplog.at_level("INFO"):
+        res_success = get_weather("New York")
+        assert res_success["status"] == "success"
+        assert "New York" in res_success["report"]
+
+        res_unknown = get_weather("Atlantis")
+        assert res_unknown["status"] == "error"
+        assert "not available" in res_unknown["error_message"]
+
+    assert any("get_weather called with city='New York'" in record.message for record in caplog.records)
+    assert any("get_weather called with city='Atlantis'" in record.message for record in caplog.records)
+    assert any("Weather information for 'Atlantis' is not available" in record.message for record in caplog.records)
+
+
+def test_test_agent_get_current_time(caplog: pytest.LogCaptureFixture):
+    """Verify test_agent get_current_time tool and its logging."""
+    from integrations.google_adk.test_agent.agent import get_current_time
+
+    with caplog.at_level("INFO"):
+        res_success = get_current_time("New York")
+        assert res_success["status"] == "success"
+        assert "The current time in New York is" in res_success["report"]
+
+        res_unknown = get_current_time("Atlantis")
+        assert res_unknown["status"] == "error"
+        assert "Sorry, I don't have timezone information" in res_unknown["error_message"]
+
+    assert any("get_current_time called with city='New York'" in record.message for record in caplog.records)
+    assert any("get_current_time called with city='Atlantis'" in record.message for record in caplog.records)
+    assert any("Timezone information for 'Atlantis' is not available" in record.message for record in caplog.records)
+

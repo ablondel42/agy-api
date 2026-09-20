@@ -80,6 +80,7 @@ class ChatCompletionMessage(BaseModel):
     role: str = "assistant"
     content: str | None = None
     refusal: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 class Choice(BaseModel):
@@ -116,6 +117,7 @@ class DeltaContent(BaseModel):
     """Incremental content in a streaming chunk."""
     role: str | None = None
     content: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 class StreamChoice(BaseModel):

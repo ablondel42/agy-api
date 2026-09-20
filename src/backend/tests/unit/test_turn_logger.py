@@ -145,7 +145,7 @@ class TestTurnLogger:
 
         monkeypatch.setattr("turn_logger.settings.agy_app_data_dir", str(tmp_path))
 
-        raw, steps, total_lines = collect_turn_transcript(cid, since_line=0)
+        steps, raw, total_lines = collect_turn_transcript(cid, since_line=0)
         assert total_lines == 2
         assert len(steps) == 2
         assert steps[0]["content"] == "what's my name?"
@@ -171,7 +171,7 @@ class TestTurnLogger:
 
         monkeypatch.setattr("turn_logger.settings.agy_app_data_dir", str(tmp_path))
 
-        raw, steps, total_lines = collect_turn_transcript(cid, since_line=1)
+        steps, raw, total_lines = collect_turn_transcript(cid, since_line=1)
         assert total_lines == 2
         assert len(steps) == 1
         assert steps[0]["content"] == "turn 2"

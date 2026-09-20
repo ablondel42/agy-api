@@ -63,6 +63,10 @@ class Settings(BaseSettings):
         default="log",
         validation_alias=AliasChoices("agy_log_dir", "AGY_LOG_DIR", "AGY_AGY_LOG_DIR"),
     )
+    agy_app_data_dir: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("agy_app_data_dir", "AGY_APP_DATA_DIR", "AGY_AGY_APP_DATA_DIR"),
+    )
     model_cache_ttl: int = 300  # seconds
 
     # Session Pool

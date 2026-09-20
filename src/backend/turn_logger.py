@@ -39,10 +39,13 @@ def get_transcript_path(conversation_id: str | None) -> Path | None:
     if not conversation_id:
         return None
 
+    base_dir = (
+        Path(settings.agy_app_data_dir)
+        if getattr(settings, "agy_app_data_dir", None)
+        else (Path.home() / ".gemini" / "antigravity-cli")
+    )
     transcript_full = (
-        Path.home()
-        / ".gemini"
-        / "antigravity-cli"
+        base_dir
         / "brain"
         / conversation_id
         / ".system_generated"
@@ -139,8 +142,8 @@ def log_turn(
     reflection: str,
     mode: str,
     prompt: str,
-    system_prompt: str | None,
-    response_text: str,
+    system_prompt: str | None = None,
+    response_text: str = "",
     thinking: str | None = None,
     usage: dict[str, Any] | None = None,
     duration_s: float | None = None,

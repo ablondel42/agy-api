@@ -44,11 +44,92 @@ def get_session_manager(request: Request) -> SessionManager:
     return manager
 
 
+def _format_tools_for_system_prompt(tools: list[dict[str, Any]]) -> str:
+    """Format OpenAI tool definitions into instructions for the model."""
+    tool_lines: list[str] = []
+    for tool in tools:
+        if tool.get("type") == "function" and "function" in tool:
+            fn = tool["function"]
+            name = fn.get("name", "")
+            desc = fn.get("description", "")
+            params = json.dumps(fn.get("parameters", {}))
+            tool_lines.append(f"- Function: `{name}`\n  Description: {desc}\n  Parameters: {params}")
+
+    return (
+        "\n\n[Available Tools]\n"
+        "You have access to the following functions:\n"
+        + "\n".join(tool_lines)
+        + "\n\n[Tool Calling Protocol]\n"
+        "CRITICAL INSTRUCTION: If any of the available functions can answer or fulfill the user's request, "
+        "you MUST NOT answer directly with normal text or fabricate answers. Instead, you MUST call the function "
+        "by responding ONLY with a JSON object in this exact schema, with NO OTHER TEXT:\n"
+        "```json\n"
+        "{\n"
+        '  "tool_calls": [\n'
+        "    {\n"
+        '      "name": "<function_name>",\n'
+        '      "arguments": { "<arg_name>": <arg_value> }\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "```\n"
+        "Do NOT include any conversational text or explanation when calling a tool. "
+        "Only when you receive the tool response (or if no tool is applicable) should you provide a normal conversational text response."
+    )
+
+
+def _parse_tool_calls_from_response(text: str) -> list[dict[str, Any]] | None:
+    """Extract tool_calls from model response if it matches the tool calling protocol."""
+    if not text or "tool_calls" not in text:
+        return None
+
+    cleaned = text.strip()
+    if "```json" in cleaned:
+        start = cleaned.find("```json") + 7
+        end = cleaned.find("```", start)
+        cleaned = cleaned[start:end].strip() if end != -1 else cleaned[start:].strip()
+    elif "```" in cleaned:
+        start = cleaned.find("```") + 3
+        end = cleaned.find("```", start)
+        cleaned = cleaned[start:end].strip() if end != -1 else cleaned[start:].strip()
+
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        first_brace = cleaned.find("{")
+        last_brace = cleaned.rfind("}")
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            try:
+                data = json.loads(cleaned[first_brace:last_brace + 1])
+            except json.JSONDecodeError:
+                return None
+        else:
+            return None
+
+    if isinstance(data, dict) and "tool_calls" in data and isinstance(data["tool_calls"], list):
+        formatted_calls: list[dict[str, Any]] = []
+        for item in data["tool_calls"]:
+            name = item.get("name")
+            args = item.get("arguments", {})
+            if name:
+                formatted_calls.append({
+                    "id": f"call_{uuid.uuid4().hex[:8]}",
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(args) if isinstance(args, dict) else str(args),
+                    },
+                })
+        return formatted_calls if formatted_calls else None
+
+    return None
+
+
 def _extract_prompt_and_system(request: ChatCompletionRequest) -> tuple[str, str | None]:
     """Extract the user prompt and system instruction from the messages array.
 
-    Combines all system/developer messages into a system prefix, and extracts
-    the user prompt or conversational dialogue turns.
+    Combines all system/developer messages into a system prefix, adds tool instructions
+    if tools are declared, and extracts user prompt or conversational dialogue turns.
 
     Args:
         request: The chat completion request.
@@ -64,6 +145,9 @@ def _extract_prompt_and_system(request: ChatCompletionRequest) -> tuple[str, str
         if msg.role in ("system", "developer"):
             if msg.content:
                 system_parts.append(msg.content)
+
+    if request.tools:
+        system_parts.append(_format_tools_for_system_prompt(request.tools))
 
     system_message = "\n".join(system_parts) if system_parts else None
 
@@ -82,9 +166,12 @@ def _extract_prompt_and_system(request: ChatCompletionRequest) -> tuple[str, str
                 dialogue_parts.append(msg.content or "")
             elif msg.role == "tool":
                 has_user_message = True
-                dialogue_parts.append(f"[Tool Response]: {msg.content or ''}")
+                name_tag = f" ({msg.name})" if msg.name else ""
+                dialogue_parts.append(f"[Tool Response{name_tag}]: {msg.content or ''}")
             elif msg.role == "assistant":
-                if msg.content:
+                if msg.tool_calls:
+                    dialogue_parts.append(f"[Assistant called tools]: {json.dumps(msg.tool_calls)}")
+                elif msg.content:
                     dialogue_parts.append(f"[Assistant]: {msg.content}")
         user_prompt = "\n\n".join(dialogue_parts)
 
@@ -327,19 +414,31 @@ async def _handle_non_streaming(
         f"duration={duration_s:.2f}s response_length={len(response_text)}"
     )
 
+    tool_calls = _parse_tool_calls_from_response(response_text) if request.tools else None
+    if tool_calls:
+        choice = Choice(
+            message=ChatCompletionMessage(
+                role="assistant",
+                content=None,
+                tool_calls=tool_calls,
+            ),
+            finish_reason="tool_calls",
+        )
+    else:
+        choice = Choice(
+            message=ChatCompletionMessage(content=response_text),
+            finish_reason="stop",
+        )
+
     return ChatCompletionResponse(
         model=clean_model,
         agent=agent,
-        choices=[
-            Choice(
-                message=ChatCompletionMessage(content=response_text),
-                finish_reason="stop",
-            )
-        ],
+        choices=[choice],
         usage=usage,
         system_fingerprint=session.conversation_id or session.session_id,
         transcript=transcript_entries,
     )
+
 
 
 async def _handle_streaming(
@@ -405,15 +504,16 @@ async def _handle_streaming(
                     content = step_data.get("text_delta") or event.get("content", "")
                     if content:
                         collected_text_parts.append(content)
-                        chunk = ChatCompletionChunk(
-                            id=completion_id,
-                            created=created,
-                            model=clean_model,
-                            agent=agent,
-                            choices=[StreamChoice(delta=DeltaContent(content=content))],
-                            system_fingerprint=session.conversation_id or session.session_id,
-                        )
-                        yield f"data: {chunk.model_dump_json()}\n\n"
+                        if not request.tools:
+                            chunk = ChatCompletionChunk(
+                                id=completion_id,
+                                created=created,
+                                model=clean_model,
+                                agent=agent,
+                                choices=[StreamChoice(delta=DeltaContent(content=content))],
+                                system_fingerprint=session.conversation_id or session.session_id,
+                            )
+                            yield f"data: {chunk.model_dump_json()}\n\n"
 
                 elif event_name == "result":
                     res_data = event.get("result", {})
@@ -423,35 +523,95 @@ async def _handle_streaming(
                         completion_tokens=last_usage_data.get("output_tokens", 0),
                         total_tokens=last_usage_data.get("total_tokens", 0),
                     )
-                    # Final chunk with finish_reason
-                    final_chunk = ChatCompletionChunk(
-                        id=completion_id,
-                        created=created,
-                        model=clean_model,
-                        agent=agent,
-                        choices=[StreamChoice(
-                            delta=DeltaContent(),
-                            finish_reason="stop",
-                        )],
-                        usage=usage,
-                        system_fingerprint=session.conversation_id or session.session_id,
-                    )
-                    yield f"data: {final_chunk.model_dump_json()}\n\n"
+
+                    if request.tools:
+                        buffered_text = "".join(collected_text_parts)
+                        tool_calls = _parse_tool_calls_from_response(buffered_text)
+                        if tool_calls:
+                            tc_chunk = ChatCompletionChunk(
+                                id=completion_id,
+                                created=created,
+                                model=clean_model,
+                                agent=agent,
+                                choices=[
+                                    StreamChoice(
+                                        delta=DeltaContent(
+                                            role="assistant",
+                                            tool_calls=[
+                                                {
+                                                    "index": i,
+                                                    "id": tc["id"],
+                                                    "type": "function",
+                                                    "function": {
+                                                        "name": tc["function"]["name"],
+                                                        "arguments": tc["function"]["arguments"],
+                                                    },
+                                                }
+                                                for i, tc in enumerate(tool_calls)
+                                            ],
+                                        ),
+                                        finish_reason="tool_calls",
+                                    )
+                                ],
+                                usage=usage,
+                                system_fingerprint=session.conversation_id or session.session_id,
+                            )
+                            yield f"data: {tc_chunk.model_dump_json()}\n\n"
+                        else:
+                            if buffered_text:
+                                text_chunk = ChatCompletionChunk(
+                                    id=completion_id,
+                                    created=created,
+                                    model=clean_model,
+                                    agent=agent,
+                                    choices=[StreamChoice(delta=DeltaContent(content=buffered_text))],
+                                    system_fingerprint=session.conversation_id or session.session_id,
+                                )
+                                yield f"data: {text_chunk.model_dump_json()}\n\n"
+                            final_chunk = ChatCompletionChunk(
+                                id=completion_id,
+                                created=created,
+                                model=clean_model,
+                                agent=agent,
+                                choices=[StreamChoice(
+                                    delta=DeltaContent(),
+                                    finish_reason="stop",
+                                )],
+                                usage=usage,
+                                system_fingerprint=session.conversation_id or session.session_id,
+                            )
+                            yield f"data: {final_chunk.model_dump_json()}\n\n"
+                    else:
+                        # Final chunk with finish_reason
+                        final_chunk = ChatCompletionChunk(
+                            id=completion_id,
+                            created=created,
+                            model=clean_model,
+                            agent=agent,
+                            choices=[StreamChoice(
+                                delta=DeltaContent(),
+                                finish_reason="stop",
+                            )],
+                            usage=usage,
+                            system_fingerprint=session.conversation_id or session.session_id,
+                        )
+                        yield f"data: {final_chunk.model_dump_json()}\n\n"
 
                 # Fallback support for generic stream-json schemas ("text-delta" and "terminal_result")
                 elif event_name == "text-delta":
                     content = event.get("content", "")
                     if content:
                         collected_text_parts.append(content)
-                        chunk = ChatCompletionChunk(
-                            id=completion_id,
-                            created=created,
-                            model=clean_model,
-                            agent=agent,
-                            choices=[StreamChoice(delta=DeltaContent(content=content))],
-                            system_fingerprint=session.conversation_id or session.session_id,
-                        )
-                        yield f"data: {chunk.model_dump_json()}\n\n"
+                        if not request.tools:
+                            chunk = ChatCompletionChunk(
+                                id=completion_id,
+                                created=created,
+                                model=clean_model,
+                                agent=agent,
+                                choices=[StreamChoice(delta=DeltaContent(content=content))],
+                                system_fingerprint=session.conversation_id or session.session_id,
+                            )
+                            yield f"data: {chunk.model_dump_json()}\n\n"
 
         except AgyProcessError as e:
             logger.error(f"agy stream error: {e}")
@@ -643,15 +803,26 @@ async def _handle_interactive(
         f"duration={duration_s:.2f}s response='{response_text[:120]}...'"
     )
 
+    tool_calls = _parse_tool_calls_from_response(response_text) if request.tools else None
+    if tool_calls:
+        choice = Choice(
+            message=ChatCompletionMessage(
+                role="assistant",
+                content=None,
+                tool_calls=tool_calls,
+            ),
+            finish_reason="tool_calls",
+        )
+    else:
+        choice = Choice(
+            message=ChatCompletionMessage(content=response_text),
+            finish_reason="stop",
+        )
+
     return ChatCompletionResponse(
         model=clean_model,
         agent=agent,
-        choices=[
-            Choice(
-                message=ChatCompletionMessage(content=response_text),
-                finish_reason="stop",
-            )
-        ],
+        choices=[choice],
         usage=UsageInfo(),
         system_fingerprint=session.session_id,
     )

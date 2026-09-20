@@ -285,6 +285,8 @@ class TestChatCompletionsStreaming:
                 },
             )
 
+        assert resp2.status_code == 200
+        lines2 = [json.loads(line[6:]) for line in resp2.text.strip().split("\n\n") if line.startswith("data: ") and line != "data: [DONE]"]
         assert lines2[1]["choices"][0]["delta"]["content"] == "Turn 2 response"
         assert lines2[1]["system_fingerprint"] == "multi-stream-conv-999"
 
@@ -305,7 +307,7 @@ class TestChatCompletionsStreaming:
         ]
 
         with patch("routes.chat.run_agy", new_callable=AsyncMock, return_value=mock_result), \
-             patch("routes.chat.collect_turn_transcript", return_value=("raw log", mock_steps, 1)):
+             patch("routes.chat.collect_turn_transcript", return_value=(mock_steps, "raw log", 1)):
             resp = await client.post(
                 "/v1/chat/completions",
                 json={
@@ -338,7 +340,7 @@ class TestChatCompletionsStreaming:
         ]
 
         with patch("routes.chat.stream_agy", side_effect=mock_stream), \
-             patch("routes.chat.collect_turn_transcript", return_value=("raw log", mock_steps, 1)):
+             patch("routes.chat.collect_turn_transcript", return_value=(mock_steps, "raw log", 1)):
             resp = await client.post(
                 "/v1/chat/completions",
                 json={

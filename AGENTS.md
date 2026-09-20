@@ -1,3 +1,8 @@
+# Model Transparency & Thinking
+- Always output your complete step-by-step thinking process, design trade-offs, and rationale directly in your
+  visible markdown response before executing tools or providing final answers.
+- Do not summarize or omit intermediate reasoning steps.
+
 # Environment & Tooling Rules
 
 ## Python Virtual Environment Isolation
